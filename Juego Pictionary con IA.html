@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pictionary vs IA · Taller de Visión por Computadora</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+  /* ==========================================================
+     TOKENS DE DISEÑO — paleta "cuaderno de laboratorio":
+     papel claro + tinta grafito, con dos acentos marcador:
+     teal (herramientas / acción humana) y coral (IA / red).
+     ========================================================== */
+  :root{
+    --papel:        #F7F3E9;
+    --papel-carta:  #FFFFFF;
+    --grafito:      #1F2933;
+    --grilla:       #D8CFC0;
+    --teal:         #0F8B8D;
+    --teal-oscuro:  #0B6668;
+    --coral:        #E8542E;
+    --coral-oscuro: #C13E1C;
+    --amarillo:     #F2B705;
+    --pizarron:     #16232B;
+    --radio:        14px;
+    --sombra:       0 3px 0 rgba(31,41,51,0.9);
+  }
+
+  *{ box-sizing: border-box; }
+
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--grilla) 1px, transparent 1px) 0 0/28px 28px,
+      linear-gradient(90deg, var(--grilla) 1px, transparent 1px) 0 0/28px 28px,
+      var(--papel);
+    color: var(--grafito);
+    font-family: 'Space Grotesk', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1,h2,h3{ font-family:'Kalam', cursive; margin:0; }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+
+  /* ---------- Encabezado ---------- */
+  header{ padding: 22px 20px 14px; text-align:center; }
+  header h1{ font-size: clamp(28px, 5vw, 44px); color: var(--grafito); transform: rotate(-1deg); }
+  header h1 span{ color: var(--coral); }
+  header p{ max-width: 640px; margin: 8px auto 0; color:#4B5A64; font-size:15px; }
+
+  /* ---------- Navegación por pestañas ---------- */
+  nav.tabs{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding: 6px 12px 18px; }
+  nav.tabs button{
+    font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:14px;
+    padding:10px 18px; border:2px solid var(--grafito); border-radius: 10px 10px 2px 2px;
+    background: var(--papel-carta); color: var(--grafito); cursor:pointer;
+    box-shadow: var(--sombra); transition: transform .12s ease;
+  }
+  nav.tabs button:hover{ transform: translateY(-2px); }
+  nav.tabs button.activa{ background: var(--teal); color:#fff; }
+
+  main{ max-width: 1180px; margin: 0 auto; padding: 0 16px 60px; }
+  section.tab{ display:none; }
+  section.tab.activa{ display:block; animation: aparecer .25s ease; }
+  @keyframes aparecer{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+
+  .tarjeta{
+    background: var(--papel-carta); border: 2px solid var(--grafito);
+    border-radius: var(--radio); box-shadow: var(--sombra); padding: 16px;
+  }
+
+  /* ---------- Layout pestaña Dibujar ---------- */
+  .layout-dibujo{ display:grid; grid-template-columns: 92px 1fr 340px; gap: 16px; align-items:start; }
+  @media (max-width: 900px){
+    .layout-dibujo{ grid-template-columns: 1fr; }
+    .barra-herramientas{ flex-direction:row !important; overflow-x:auto; }
+  }
+
+  .barra-herramientas{ display:flex; flex-direction:column; gap:10px; padding:10px 8px; }
+  .btn-tool{
+    width:100%; aspect-ratio:1; border:2px solid var(--grafito); border-radius:10px;
+    background:var(--papel); font-size:20px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .btn-tool.activa{ background: var(--teal); color:#fff; }
+
+  .paleta{ display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+  .swatch{ width:22px; height:22px; border-radius:50%; border:2px solid var(--grafito); cursor:pointer; }
+  .swatch.activa{ box-shadow: 0 0 0 3px var(--amarillo); }
+
+  /* FIX DEL LIENZO: Ahora abraza perfectamente al canvas y es responsive */
+  #contenedorLienzo{
+    width: 400px;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    margin: 0 auto;
+    border: 2px dashed var(--grafito);
+    border-radius: var(--radio);
+    background: #fff;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #contenedorLienzo canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
+
+  .fila-controles{ display:flex; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .fila-controles label{ font-size:13px; color:#4B5A64; }
+
+  .boton{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; border:2px solid var(--grafito);
+    border-radius:10px; padding:10px 16px; cursor:pointer; box-shadow: var(--sombra);
+    background: var(--papel-carta);
+  }
+  .boton:active{ transform: translateY(2px); box-shadow:none; }
+  .boton.primario{ background: var(--coral); color:#fff; }
+  .boton.secundario{ background: var(--teal); color:#fff; }
+  .boton:disabled{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+  .boton.chico{ padding:8px 12px; font-size:13px; }
+
+  /* ---------- Panel de IA ---------- */
+  .panel-ia h3{ font-size:19px; margin-bottom:6px; }
+  .subtitulo-panel{ font-size:12px; color:#6b7a84; margin-bottom:10px; }
+
+  #lienzoRed{ width:100%; border-radius: 10px; display:block; background: var(--pizarron); }
+  .leyenda-red{ display:flex; justify-content:space-between; font-size:10.5px; color:#9AA7AE; margin-top:4px; }
+
+  .fila-slider{ margin:8px 0; }
+  .fila-slider label{ display:flex; justify-content:space-between; font-size:12.5px; color:#4B5A64; }
+  input[type=range]{ width:100%; accent-color: var(--coral); }
+
+  .etiqueta-parametro{
+    display:inline-block; font-size:10px; font-weight:700; padding:1px 7px;
+    border-radius:6px; margin-left:6px; vertical-align:middle;
+  }
+  .etiqueta-parametro.real{ background:#E3F6E8; color:#1B7A3D; }
+  .etiqueta-parametro.decorativo{ background:#EDE7D8; color:#7A6C4F; }
+
+  .barra-resultado{ margin:10px 0; }
+  .barra-resultado .cabecera{ display:flex; justify-content:space-between; font-size:13px; margin-bottom:3px; }
+  .track{ position:relative; background:#EDE7D8; border-radius:6px; height:12px; overflow:visible; border:1px solid var(--grilla); }
+  .relleno{ height:100%; border-radius:5px; background: linear-gradient(90deg, var(--teal), var(--coral)); overflow:hidden; }
+  .marca-umbral{ position:absolute; top:-4px; bottom:-4px; width:2px; background: var(--grafito); z-index:2; }
+  .marca-umbral::after{
+    content:''; position:absolute; top:-6px; left:-4px;
+    border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid var(--grafito);
+  }
+
+  .estado-modelo{ font-size:12px; padding:6px 10px; border-radius:8px; background:#EDE7D8; display:inline-block; margin-bottom:10px; }
+
+  input[type=text], input[type=url]{
+    width:100%; padding:9px 10px; border:2px solid var(--grafito);
+    border-radius:8px; font-family:'Space Grotesk',sans-serif; font-size:14px;
+  }
+
+  .vista-procesada{ display:flex; align-items:center; gap:10px; margin:10px 0; background:#EDE7D8; border-radius:10px; padding:8px; }
+  .vista-procesada img{ width:56px; height:56px; border:2px solid var(--grafito); border-radius:6px; background:#fff; }
+  .vista-procesada p{ font-size:11.5px; color:#4B5A64; margin:0; }
+
+  .grilla-rasgos{ display:grid; grid-template-columns: repeat(2, 1fr); gap:6px; margin-top:4px; margin-bottom:4px; }
+  .chip-rasgo{
+    display:flex; align-items:center; gap:6px; border:1.5px solid var(--grilla); border-radius:8px;
+    padding:6px 8px; font-size:12px; cursor:pointer; background:#fff; user-select:none;
+  }
+  .chip-rasgo input{ accent-color: var(--teal); width:15px; height:15px; flex-shrink:0; }
+  .chip-rasgo.marcado{ border-color: var(--teal); background:#EAF6F6; font-weight:700; }
+
+  /* ---------- Galería ---------- */
+  .rejilla-galeria{ display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:14px; margin-top:14px; }
+  .carta-dibujo{ border:2px solid var(--grafito); border-radius:10px; overflow:hidden; background:#fff; box-shadow: var(--sombra); }
+  .carta-dibujo img{ width:100%; display:block; background:#fff; border-bottom:2px solid var(--grafito); }
+  .carta-dibujo .info{ padding:8px; }
+  .carta-dibujo .etiqueta{ font-weight:700; }
+  .carta-dibujo .conf{ font-size:11px; color:var(--coral); }
+  .carta-dibujo .tags{ font-size:11px; color:#6b7a84; margin:4px 0; min-height:14px; }
+  .carta-dibujo .acciones{ display:flex; gap:6px; }
+  .carta-dibujo .acciones button{
+    flex:1; font-size:11px; padding:5px; border-radius:6px; border:1.5px solid var(--grafito);
+    background: var(--papel); cursor:pointer;
+  }
+  .vacio{ text-align:center; color:#6b7a84; padding:30px 10px; }
+
+  /* ---------- Akinator ---------- */
+  .caja-pregunta{ background: var(--pizarron); color:#fff; border-radius: var(--radio); padding: 22px; text-align:center; margin: 16px 0; }
+  .caja-pregunta h2{ font-size:22px; color:var(--amarillo); }
+  .respuestas{ display:flex; gap:12px; justify-content:center; margin-top:14px; }
+  .aki-rejilla{ display:grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr)); gap:10px; }
+  .aki-carta{
+    border:2px solid var(--grafito); border-radius:8px; overflow:hidden; text-align:center;
+    background:#fff; transition: opacity .25s ease, filter .25s ease;
+  }
+  .aki-carta img{ width:100%; display:block; }
+  .aki-carta span{ display:block; font-size:11px; padding:4px; font-weight:700; }
+  .aki-carta.descartada{ opacity:.18; filter: grayscale(1); }
+
+  /* ---------- QR ---------- */
+  #contenedorQR{ display:flex; justify-content:center; padding:16px; }
+  .caja-nota{ background:#FFF3D6; border:2px dashed var(--amarillo); border-radius:10px; padding:12px 14px; font-size:13.5px; margin-top:12px; }
+  .caja-nota.error{ border-color:#C13E1C; background:#FCE4E0; color:#1F2933;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Pictionary contra la <span>IA</span></h1>
+  <p>Taller de IA: dibujá, dejá que una red neuronal ya entrenada adivine tu dibujo,
+     mirá cómo "piensa" por dentro, y descubrí dónde el modelo se equivoca (y por qué).</p>
+</header>
+
+<nav class="tabs">
+  <button class="activa" data-tab="tab-dibujar">✏️ Dibujar</button>
+  <button data-tab="tab-galeria">🖼️ Galería</button>
+  <button data-tab="tab-akinator">🕵️ Akinator IA</button>
+  <button data-tab="tab-qr">📱 Acceso QR</button>
+</nav>
+
+<main>
+
+  <section class="tab activa" id="tab-dibujar">
+    <div class="layout-dibujo">
+
+      <div class="tarjeta barra-herramientas">
+        <button class="btn-tool activa" data-tool="lapiz" title="Lápiz">✏️</button>
+        <button class="btn-tool" data-tool="goma" title="Goma de borrar">🧽</button>
+        <button class="btn-tool" data-tool="linea" title="Línea">📏</button>
+        <button class="btn-tool" data-tool="rectangulo" title="Rectángulo">▭</button>
+        <button class="btn-tool" data-tool="circulo" title="Óvalo / Círculo (mantené Shift para círculo perfecto)">◯</button>
+        <div class="paleta" id="paletaColores"></div>
+        <input type="color" id="colorPicker" value="#1F2933" style="width:100%;margin-top:4px;height:30px;border:2px solid var(--grafito);border-radius:8px;">
+      </div>
+
+      <div class="tarjeta">
+        <div class="caja-nota" style="margin-top:0;margin-bottom:10px;">
+          💡 <strong>Para que la IA reconozca mejor:</strong> dibujá simple, rápido y con trazos gruesos, sin
+          relleno ni sombreado. La IA de este taller solo conoce un conjunto acotado de palabras;
+          fuera de esa lista, va a fallar seguro, sin importar qué tan bien dibujes.
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            <button class="boton primario" id="btnDesafio">🎲 ¡Dame un desafío!</button>
+            <button class="boton chico" id="btnVerCategorias">📋 Ver categorías permitidas</button>
+          </div>
+          <h3 id="textoDesafio" style="margin-top:12px; color: var(--teal-oscuro); display:none; text-align: center;"></h3>
+          <div id="listaCategorias" style="display:none;max-height:160px;overflow-y:auto;margin-top:8px;font-size:12px;line-height:1.6;background:#fff;border:1px solid var(--grilla);border-radius:8px;padding:8px;"></div>
+        </div>
+
+        <div id="contenedorLienzo"></div>
+        
+        <div class="fila-controles">
+          <label style="flex:1;min-width:150px;">Grosor de trazo
+            <input type="range" id="sliderGrosor" min="6" max="40" value="16">
+          </label>
+          <button class="boton chico" id="btnDeshacer" title="Deshacer (Ctrl+Z)" disabled>↩️ Deshacer</button>
+          <button class="boton chico" id="btnRehacer" title="Rehacer (Ctrl+Y)" disabled>↪️ Rehacer</button>
+          <button class="boton" id="btnLimpiar">🗑️ Limpiar</button>
+        </div>
+        <div class="fila-controles">
+          <button class="boton primario" id="btnListo" style="width:100%;">✅ ¡LISTO! Adivinar con IA</button>
+        </div>
+        <div class="fila-controles">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+            <input type="checkbox" id="chkModoVivo" style="width:16px;height:16px;">
+            🔴 Clasificación en vivo (predice cada 1.5s mientras dibujás)
+          </label>
+        </div>
+        <div id="bannerError" class="caja-nota error" style="display:none;"></div>
+      </div>
+
+      <div class="tarjeta panel-ia">
+        <h3>🧠 Qué hace la red por dentro</h3>
+        <canvas id="lienzoRed" width="340" height="190"></canvas>
+        <div class="leyenda-red"><span>◉ entrada</span><span>◉ capas ocultas</span><span>◉ salida</span></div>
+
+        <div class="fila-slider">
+          <label><span>Capas ocultas <span class="etiqueta-parametro decorativo">decorativo</span></span><span class="mono" id="valCapas">2</span></label>
+          <input type="range" id="sliderCapas" min="1" max="4" value="2">
+        </div>
+        <div class="fila-slider">
+          <label><span>Neuronas por capa <span class="etiqueta-parametro decorativo">decorativo</span></span><span class="mono" id="valNeuronas">5</span></label>
+          <input type="range" id="sliderNeuronas" min="3" max="10" value="5">
+        </div>
+        <p class="subtitulo-panel" style="margin-top:-2px;">⚠️ Estos dos sliders solo animan el dibujito de la red. No tocan la predicción real.</p>
+
+        <div class="fila-slider">
+          <label><span>Zoom del dibujo (% del cuadro que ocupa) <span class="etiqueta-parametro real">real</span></span><span class="mono" id="valMargen">80%</span></label>
+          <input type="range" id="sliderMargen" min="40" max="95" value="80">
+        </div>
+        <p class="subtitulo-panel" style="margin-top:-2px;">✅ Parámetro real: controla qué porcentaje del cuadro final ocupa tu dibujo antes de mandarlo a la IA (por defecto <strong>80%</strong>). Probá moverlo y volvé a clasificar el mismo dibujo para ver cómo cambia la predicción.</p>
+
+        <div class="fila-slider">
+          <label><span>Umbral de confianza <span class="etiqueta-parametro real">real</span></span><span class="mono" id="valUmbral">20%</span></label>
+          <input type="range" id="sliderUmbral" min="0" max="100" value="20">
+        </div>
+        <p class="subtitulo-panel" style="margin-top:-2px;">Predicciones por debajo de este porcentaje se muestran atenuadas.</p>
+
+        <div class="estado-modelo" id="estadoModelo">⏳ Cargando DoodleNet...</div>
+
+        <h3 style="font-size:16px;margin-top:6px;">Top 5 predicciones</h3>
+        <div id="contenedorTop5"></div>
+        <div id="advertenciaConfianza" class="caja-nota error" style="display:none; margin-top: 10px;"></div>
+
+        <div class="vista-procesada" id="vistaProcesadaCont" style="display:none;">
+          <img id="imgVistaProcesada" alt="Imagen procesada">
+          <p>👁️ Esto es lo que le mandamos a la red: tu dibujo recortado y centrado.</p>
+        </div>
+
+        <h3 style="font-size:16px;margin-top:14px;">✍️ Corrección y Rasgos</h3>
+        <p class="subtitulo-panel">Si la IA se equivocó, corregí la etiqueta acá. Tildá los rasgos para el modo Akinator.</p>
+        <input type="text" id="inputCorreccion" placeholder="Etiqueta correcta (ej: casa, auto)">
+
+        <div class="grilla-rasgos" id="grillaRasgos" style="margin-top:10px;"></div>
+
+        <button class="boton secundario" id="btnGuardar" style="width:100%;margin-top:12px;">💾 Guardar en galería</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-galeria">
+    <div class="tarjeta">
+      <h2>🖼️ Galería de dibujos guardados</h2>
+      <p class="subtitulo-panel">Cada tarjeta guarda la imagen, la etiqueta, la confianza del modelo y los rasgos usados.</p>
+      <div class="rejilla-galeria" id="rejillaGaleria">
+        <p class="vacio">Todavía no guardaste ningún dibujo. Andá a la pestaña "Dibujar" y guardá al menos 3.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-akinator">
+    <div class="tarjeta">
+      <h2>🕵️ Akinator IA</h2>
+      <p class="subtitulo-panel">Necesitás al menos 3 dibujos guardados. Piensa en uno de los dibujos (sin decirlo) y responde las preguntas con sinceridad.</p>
+      <button class="boton primario" id="btnComenzarAki">🎬 Comenzar ronda</button>
+      <button class="boton" id="btnReiniciarAki">🔄 Reiniciar</button>
+
+      <div class="caja-pregunta" id="cajaPregunta" style="display:none;">
+        <h2 id="textoPregunta">—</h2>
+        <div class="respuestas" id="cajaRespuestas">
+          <button class="boton secundario" id="btnSi">✅ Sí</button>
+          <button class="boton" id="btnNo">❌ No</button>
+        </div>
+      </div>
+
+      <div class="aki-rejilla" id="rejillaAki" style="margin-top:18px;"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-qr">
+    <div class="tarjeta">
+      <h2>📱 Acceso para los chicos vía QR</h2>
+      <p class="subtitulo-panel">Subí este archivo a GitHub Pages (o corré Live Server en tu red local) y pegá la URL acá para generar el QR.</p>
+      <input type="url" id="inputURLQR" placeholder="https://tu-usuario.github.io/pictionary-ia/">
+      <button class="boton primario" id="btnGenerarQR" style="margin-top:10px;">Generar QR</button>
+      <div id="contenedorQR"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+/* ==================================================================
+   ESTADO GLOBAL DE LA APLICACIÓN
+   ================================================================== */
+let herramientaActual   = 'lapiz';
+let colorActual         = '#1F2933';
+let grosorActual        = 16;
+let inicioForma         = null;
+let clasificadorDoodle  = null;
+let modeloListo         = false;
+let ultimosResultados   = [];
+let galeria             = [];
+let contadorId          = 1;
+let porcentajeLlenadoActual = 80;
+
+let candidatosRestantes = [];
+let etiquetasUsadas     = new Set();
+let preguntaActual      = null;
+
+const PALETA = ['#1F2933','#E8542E','#0F8B8D','#F2B705','#3B6E8F','#8E44AD','#2ECC71','#FFFFFF'];
+
+/* ==================================================================
+   TRADUCCIONES Y CATEGORÍAS SEGURAS
+   ================================================================== */
+const TRADUCCIONES = {
+  aircraft_carrier:'portaaviones', airplane:'avión', alarm_clock:'despertador', ambulance:'ambulancia',
+  angel:'ángel', animal_migration:'migración de animales', ant:'hormiga', anvil:'yunque', apple:'manzana',
+  arm:'brazo', asparagus:'espárrago', axe:'hacha', backpack:'mochila', banana:'banana', bandage:'vendaje',
+  barn:'granero', baseball:'pelota de béisbol', baseball_bat:'bate de béisbol', basket:'canasta',
+  basketball:'pelota de básquet', bat:'murciélago', bathtub:'bañera', beach:'playa', bear:'oso',
+  beard:'barba', bed:'cama', bee:'abeja', belt:'cinturón', bench:'banco', bicycle:'bicicleta',
+  binoculars:'binoculares', bird:'pájaro', birthday_cake:'torta de cumpleaños', blackberry:'mora',
+  blueberry:'arándano', book:'libro', boomerang:'bumerán', bottlecap:'tapita de botella', bowtie:'moño',
+  bracelet:'pulsera', brain:'cerebro', bread:'pan', bridge:'puente', broccoli:'brócoli', broom:'escoba',
+  bucket:'balde', bulldozer:'topadora', bus:'colectivo', bush:'arbusto', butterfly:'mariposa',
+  cactus:'cactus', cake:'torta', calculator:'calculadora', calendar:'calendario', camel:'camello',
+  camera:'cámara', camouflage:'camuflaje', campfire:'fogata', candle:'vela', cannon:'cañón', canoe:'canoa',
+  car:'auto', carrot:'zanahoria', castle:'castillo', cat:'gato', ceiling_fan:'ventilador de techo',
+  cello:'violonchelo', cell_phone:'celular', chair:'silla', chandelier:'araña de luces', church:'iglesia',
+  circle:'círculo', clarinet:'clarinete', clock:'reloj', cloud:'nube', coffee_cup:'taza de café',
+  compass:'brújula', computer:'computadora', cookie:'galletita', cooler:'conservadora', couch:'sofá',
+  cow:'vaca', crab:'cangrejo', crayon:'crayón', crocodile:'cocodrilo', crown:'corona',
+  cruise_ship:'crucero', cup:'taza', diamond:'diamante', dishwasher:'lavavajillas',
+  diving_board:'trampolín', dog:'perro', dolphin:'delfín', donut:'dona', door:'puerta', dragon:'dragón',
+  dresser:'cómoda', drill:'taladro', drums:'batería', duck:'pato', dumbbell:'mancuerna', ear:'oreja',
+  elbow:'codo', elephant:'elefante', envelope:'sobre', eraser:'goma de borrar', eye:'ojo',
+  eyeglasses:'anteojos', face:'cara', fan:'ventilador', feather:'pluma', fence:'cerca', finger:'dedo',
+  fire_hydrant:'hidrante', fireplace:'chimenea', firetruck:'camión de bomberos', fish:'pez',
+  flamingo:'flamenco', flashlight:'linterna', flip_flops:'ojotas', floor_lamp:'lámpara de pie',
+  flower:'flor', flying_saucer:'platillo volador', foot:'pie', fork:'tenedor', frog:'rana',
+  frying_pan:'sartén', garden:'jardín', garden_hose:'manguera de jardín', giraffe:'jirafa',
+  goatee:'barba de candado', golf_club:'palo de golf', grapes:'uvas', grass:'pasto', guitar:'guitarra',
+  hamburger:'hamburguesa', hammer:'martillo', hand:'mano', harp:'arpa', hat:'sombrero',
+  headphones:'auriculares', hedgehog:'erizo', helicopter:'helicóptero', helmet:'casco',
+  hexagon:'hexágono', hockey_puck:'disco de hockey', hockey_stick:'palo de hockey', horse:'caballo',
+  hospital:'hospital', hot_air_balloon:'globo aerostático', hot_dog:'panchito', hot_tub:'jacuzzi',
+  hourglass:'reloj de arena', house:'casa', house_plant:'planta de interior', hurricane:'huracán',
+  ice_cream:'helado', jacket:'campera', jail:'cárcel', kangaroo:'canguro', key:'llave',
+  keyboard:'teclado', knee:'rodilla', knife:'cuchillo', ladder:'escalera', lantern:'farol',
+  laptop:'laptop', leaf:'hoja', leg:'pierna', light_bulb:'lamparita', lighter:'encendedor',
+  lighthouse:'faro', lightning:'rayo', line:'línea', lion:'león', lipstick:'labial',
+  lobster:'langosta', lollipop:'chupetín', mailbox:'buzón', map:'mapa', marker:'marcador',
+  matches:'fósforos', megaphone:'megáfono', mermaid:'sirena', microphone:'micrófono',
+  microwave:'microondas', monkey:'mono', moon:'luna', mosquito:'mosquito', motorbike:'moto',
+  mountain:'montaña', mouse:'ratón', moustache:'bigote', mouth:'boca', mug:'tazón',
+  mushroom:'hongo', nail:'clavo', necklace:'collar', nose:'nariz', ocean:'océano',
+  octagon:'octágono', octopus:'pulpo', onion:'cebolla', oven:'horno', owl:'búho',
+  paintbrush:'pincel', paint_can:'lata de pintura', palm_tree:'palmera', panda:'panda',
+  pants:'pantalón', paper_clip:'clip', parachute:'paracaídas', parrot:'loro', passport:'pasaporte',
+  peanut:'maní', pear:'pera', peas:'arvejas', pencil:'lápiz', penguin:'pingüino', piano:'piano',
+  pickup_truck:'camioneta', picture_frame:'marco de foto', pig:'chancho', pillow:'almohada',
+  pineapple:'ananá', pizza:'pizza', pliers:'pinzas', police_car:'patrullero', pond:'laguna',
+  pool:'pileta', popsicle:'paleta helada', postcard:'postal', potato:'papa',
+  power_outlet:'tomacorriente', purse:'cartera', rabbit:'conejo', raccoon:'mapache', radio:'radio',
+  rain:'lluvia', rainbow:'arcoíris', rake:'rastrillo', remote_control:'control remoto',
+  rhinoceros:'rinoceronte', rifle:'rifle', river:'río', roller_coaster:'montaña rusa',
+  rollerskates:'patines', sailboat:'velero', sandwich:'sándwich', saw:'sierra',
+  saxophone:'saxofón', school_bus:'colectivo escolar', scissors:'tijera', scorpion:'escorpión',
+  screwdriver:'destornillador', sea_turtle:'tortuga marina', see_saw:'subibaja', shark:'tiburón',
+  sheep:'oveja', shoe:'zapato', shorts:'short', shovel:'pala', sink:'pileta de cocina',
+  skateboard:'patineta', skull:'calavera', skyscraper:'rascacielos', sleeping_bag:'bolsa de dormir',
+  smiley_face:'carita feliz', snail:'caracol', snake:'serpiente', snorkel:'esnórquel',
+  snowflake:'copo de nieve', snowman:'muñeco de nieve', soccer_ball:'pelota de fútbol', sock:'media',
+  speedboat:'lancha', spider:'araña', spoon:'cuchara', spreadsheet:'planilla de cálculo',
+  square:'cuadrado', squiggle:'garabato', squirrel:'ardilla', stairs:'escalera', star:'estrella',
+  steak:'bife', stereo:'equipo de música', stethoscope:'estetoscopio', stitches:'puntos de sutura',
+  stop_sign:'señal de pare', stove:'cocina', strawberry:'frutilla', streetlight:'farol de calle',
+  string_bean:'chaucha', submarine:'submarino', suitcase:'valija', sun:'sol', swan:'cisne',
+  sweater:'sweater', swing_set:'hamaca', sword:'espada', syringe:'jeringa', table:'mesa',
+  teapot:'tetera', 'teddy-bear':'osito de peluche', telephone:'teléfono', television:'televisor',
+  tennis_racquet:'raqueta de tenis', tent:'carpa', the_eiffel_tower:'la Torre Eiffel',
+  the_great_wall_of_china:'la Gran Muralla China', the_mona_lisa:'la Mona Lisa', tiger:'tigre',
+  toaster:'tostadora', toe:'dedo del pie', toilet:'inodoro', tooth:'diente',
+  toothbrush:'cepillo de dientes', toothpaste:'pasta dental', tornado:'tornado', tractor:'tractor',
+  traffic_light:'semáforo', train:'tren', tree:'árbol', triangle:'triángulo', trombone:'trombón',
+  truck:'camión', trumpet:'trompeta', 't-shirt':'remera', umbrella:'paraguas',
+  underwear:'ropa interior', van:'combi', vase:'florero', violin:'violín',
+  washing_machine:'lavarropas', watermelon:'sandía', waterslide:'tobogán de agua', whale:'ballena',
+  wheel:'rueda', windmill:'molino de viento', wine_bottle:'botella de vino', wine_glass:'copa de vino',
+  wristwatch:'reloj de pulsera', yoga:'yoga', zebra:'cebra', zigzag:'zigzag'
+};
+
+function traducirEtiqueta(etiquetaOriginal) {
+  const clave = etiquetaOriginal.toLowerCase().trim();
+  if (TRADUCCIONES[clave]) return TRADUCCIONES[clave];
+  const legible = clave.replace(/_/g, ' ');
+  return legible.charAt(0).toUpperCase() + legible.slice(1);
+}
+
+const CATEGORIAS_SEGURAS = [
+  'sun', 'star', 'cloud', 'umbrella', 'scissors',
+  'apple', 'pizza', 'donut', 'ice_cream', 'tree', 'flower',
+  'fish', 'butterfly', 'house', 'ladder', 'tent', 'pants',
+  't-shirt', 'cup', 'eyeglasses',
+  'envelope'
+];
+
+/* ==================================================================
+   INTERFAZ Y NAVEGACIÓN
+   ================================================================== */
+document.querySelectorAll('nav.tabs button').forEach(boton => {
+  boton.addEventListener('click', () => {
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('activa'));
+    document.querySelectorAll('section.tab').forEach(s => s.classList.remove('activa'));
+    boton.classList.add('activa');
+    document.getElementById(boton.dataset.tab).classList.add('activa');
+  });
+});
+
+document.getElementById('btnDesafio').addEventListener('click', () => {
+  const clave = CATEGORIAS_SEGURAS[Math.floor(Math.random() * CATEGORIAS_SEGURAS.length)];
+  const texto = document.getElementById('textoDesafio');
+  texto.innerHTML = `🎯 Tu desafío: <strong>${traducirEtiqueta(clave).toUpperCase()}</strong>`;
+  texto.style.display = 'block';
+  if (apiLienzo.limpiar) apiLienzo.limpiar();
+});
+
+document.getElementById('btnVerCategorias').addEventListener('click', () => {
+  const contenedor = document.getElementById('listaCategorias');
+  const visible = contenedor.style.display !== 'none';
+  if (visible) { contenedor.style.display = 'none'; return; }
+  if (!contenedor.dataset.armada) {
+    const nombres = CATEGORIAS_SEGURAS.map(c => traducirEtiqueta(c)).sort((a, b) => a.localeCompare(b, 'es'));
+    contenedor.textContent = nombres.join(' · ');
+    contenedor.dataset.armada = '1';
+  }
+  contenedor.style.display = 'block';
+});
+
+/* ==================================================================
+   RASGOS (CHECKBOXES)
+   ================================================================== */
+const RASGOS_FIJOS = [
+  'es un ser vivo', 'es un objeto', 'es comida', 'es redondo',
+  'es alargado', 'tiene patas', 'vuela', 'flota en el agua',
+  'se usa en la cocina', 'se usa para vestirse', 'es más grande que una persona',
+  'entra en la mano'
+];
+
+function renderizarGrillaRasgos(rasgosMarcados = []) {
+  const contenedor = document.getElementById('grillaRasgos');
+  contenedor.innerHTML = '';
+  RASGOS_FIJOS.forEach(rasgo => {
+    const marcado = rasgosMarcados.includes(rasgo);
+    const label = document.createElement('label');
+    label.className = 'chip-rasgo' + (marcado ? ' marcado' : '');
+    label.innerHTML = `<input type="checkbox" value="${rasgo}" ${marcado ? 'checked' : ''}> ${rasgo}`;
+    label.querySelector('input').addEventListener('change', e => {
+      label.classList.toggle('marcado', e.target.checked);
+    });
+    contenedor.appendChild(label);
+  });
+}
+function leerRasgosMarcados() {
+  return Array.from(document.querySelectorAll('#grillaRasgos input:checked')).map(i => i.value);
+}
+renderizarGrillaRasgos();
+
+/* ==================================================================
+   HERRAMIENTAS DE DIBUJO
+   ================================================================== */
+document.querySelectorAll('.btn-tool').forEach(boton => {
+  boton.addEventListener('click', () => {
+    document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('activa'));
+    boton.classList.add('activa');
+    herramientaActual = boton.dataset.tool;
+  });
+});
+
+const paletaDiv = document.getElementById('paletaColores');
+PALETA.forEach((hex, i) => {
+  const sw = document.createElement('div');
+  sw.className = 'swatch' + (i === 0 ? ' activa' : '');
+  sw.style.background = hex;
+  sw.addEventListener('click', () => {
+    colorActual = hex;
+    document.getElementById('colorPicker').value = hex;
+    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('activa'));
+    sw.classList.add('activa');
+  });
+  paletaDiv.appendChild(sw);
+});
+
+document.getElementById('colorPicker').addEventListener('input', e => {
+  colorActual = e.target.value;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('activa'));
+});
+
+document.getElementById('sliderGrosor').addEventListener('input', e => {
+  grosorActual = parseInt(e.target.value, 10);
+});
+
+/* ==================================================================
+   P5.JS (LIENZO)
+   ================================================================== */
+const ANCHO_LIENZO = 400;
+const ALTO_LIENZO  = 400;
+const TAM_AUXILIAR = 300;
+let apiLienzo = {};
+
+new p5(p => {
+  let bufferPrincipal, bufferPrevia, bufferAuxiliar;
+  let prevX, prevY;
+  let pilaDeshacer = [];
+  let pilaRehacer  = [];
+
+  function guardarEstadoHistorial() {
+    pilaDeshacer.push(bufferPrincipal.get());
+    if (pilaDeshacer.length > 25) pilaDeshacer.shift();
+    pilaRehacer = [];
+    actualizarBotonesHistorial();
+  }
+
+  p.setup = () => {
+    const c = p.createCanvas(ANCHO_LIENZO, ALTO_LIENZO);
+    c.parent('contenedorLienzo');
+    bufferPrincipal = p.createGraphics(ANCHO_LIENZO, ALTO_LIENZO);
+    bufferPrevia    = p.createGraphics(ANCHO_LIENZO, ALTO_LIENZO);
+    bufferAuxiliar  = p.createGraphics(TAM_AUXILIAR, TAM_AUXILIAR);
+    bufferPrincipal.pixelDensity(1);
+    bufferPrevia.pixelDensity(1);
+    bufferAuxiliar.pixelDensity(1);
+    bufferPrincipal.background(255);
+    bufferPrevia.clear();
+  };
+
+  p.draw = () => {
+    p.image(bufferPrincipal, 0, 0);
+    p.image(bufferPrevia, 0, 0);
+  };
+
+  function dentroDelLienzo() {
+    return p.mouseX >= 0 && p.mouseX <= ANCHO_LIENZO && p.mouseY >= 0 && p.mouseY <= ALTO_LIENZO;
+  }
+
+  p.mousePressed = () => {
+    if (!dentroDelLienzo()) return;
+    if (['linea', 'rectangulo', 'circulo'].includes(herramientaActual)) {
+      guardarEstadoHistorial();
+      inicioForma = { x: p.mouseX, y: p.mouseY };
+      return;
+    }
+    guardarEstadoHistorial();
+    prevX = p.mouseX; prevY = p.mouseY;
+    const col = herramientaActual === 'goma' ? '#FFFFFF' : colorActual;
+    bufferPrincipal.noStroke();
+    bufferPrincipal.fill(col);
+    bufferPrincipal.circle(p.mouseX, p.mouseY, grosorActual);
+  };
+
+  p.mouseDragged = () => {
+    if (!dentroDelLienzo()) return;
+    if (['linea', 'rectangulo', 'circulo'].includes(herramientaActual) && inicioForma) {
+      bufferPrevia.clear();
+      bufferPrevia.stroke(colorActual);
+      bufferPrevia.strokeWeight(grosorActual);
+      bufferPrevia.noFill();
+      dibujarFormaEnCapa(bufferPrevia, herramientaActual, inicioForma, { x: p.mouseX, y: p.mouseY }, p);
+      return;
+    }
+    if (herramientaActual === 'lapiz' || herramientaActual === 'goma') {
+      const col = herramientaActual === 'goma' ? '#FFFFFF' : colorActual;
+      bufferPrincipal.stroke(col);
+      bufferPrincipal.strokeWeight(grosorActual);
+      bufferPrincipal.line(prevX, prevY, p.mouseX, p.mouseY);
+      prevX = p.mouseX; prevY = p.mouseY;
+    }
+  };
+
+  p.mouseReleased = () => {
+    if (['linea', 'rectangulo', 'circulo'].includes(herramientaActual) && inicioForma) {
+      bufferPrincipal.stroke(colorActual);
+      bufferPrincipal.strokeWeight(grosorActual);
+      bufferPrincipal.noFill();
+      dibujarFormaEnCapa(bufferPrincipal, herramientaActual, inicioForma, { x: p.mouseX, y: p.mouseY }, p);
+      bufferPrevia.clear();
+      inicioForma = null;
+    }
+  };
+
+  p.touchMoved = () => { if (dentroDelLienzo()) return false; };
+
+  apiLienzo.limpiar = () => {
+    guardarEstadoHistorial();
+    bufferPrincipal.background(255);
+    bufferPrevia.clear();
+    document.getElementById('advertenciaConfianza').style.display = 'none';
+  };
+  
+  apiLienzo.deshacer = () => {
+    if (!pilaDeshacer.length) return;
+    pilaRehacer.push(bufferPrincipal.get());
+    bufferPrincipal.image(pilaDeshacer.pop(), 0, 0);
+    actualizarBotonesHistorial();
+  };
+  
+  apiLienzo.rehacer = () => {
+    if (!pilaRehacer.length) return;
+    pilaDeshacer.push(bufferPrincipal.get());
+    bufferPrincipal.image(pilaRehacer.pop(), 0, 0);
+    actualizarBotonesHistorial();
+  };
+  
+  apiLienzo.hayDeshacer = () => pilaDeshacer.length > 0;
+  apiLienzo.hayRehacer  = () => pilaRehacer.length > 0;
+  apiLienzo.getDataURL  = () => bufferPrincipal.canvas.toDataURL('image/png');
+  apiLienzo.getImagenParaIA = () => prepararImagenParaClasificar(bufferPrincipal, bufferAuxiliar);
+});
+
+function dibujarFormaEnCapa(capa, herramienta, inicio, fin, p) {
+  if (herramienta === 'linea') {
+    capa.line(inicio.x, inicio.y, fin.x, fin.y);
+  } else if (herramienta === 'rectangulo') {
+    capa.rect(inicio.x, inicio.y, fin.x - inicio.x, fin.y - inicio.y);
+  } else if (herramienta === 'circulo') {
+    let dx = fin.x - inicio.x;
+    let dy = fin.y - inicio.y;
+    if (p.keyIsDown(p.SHIFT)) {
+      const lado = Math.min(Math.abs(dx), Math.abs(dy));
+      dx = (dx < 0 ? -1 : 1) * lado;
+      dy = (dy < 0 ? -1 : 1) * lado;
+    }
+    capa.ellipse(inicio.x + dx / 2, inicio.y + dy / 2, Math.abs(dx), Math.abs(dy));
+  }
+}
+
+document.getElementById('btnLimpiar').addEventListener('click', () => apiLienzo.limpiar());
+document.getElementById('btnDeshacer').addEventListener('click', () => apiLienzo.deshacer());
+document.getElementById('btnRehacer').addEventListener('click', () => apiLienzo.rehacer());
+
+// Soporte robusto de teclado para Deshacer/Rehacer
+window.addEventListener('keydown', e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  if (e.key.toLowerCase() === 'z') { e.preventDefault(); apiLienzo.deshacer(); }
+  if (e.key.toLowerCase() === 'y') { e.preventDefault(); apiLienzo.rehacer(); }
+});
+
+function actualizarBotonesHistorial() {
+  document.getElementById('btnDeshacer').disabled = !apiLienzo.hayDeshacer();
+  document.getElementById('btnRehacer').disabled = !apiLienzo.hayRehacer();
+}
+
+/* ==================================================================
+   PREPROCESAMIENTO IA (Recorte y zoom)
+   ================================================================== */
+function prepararImagenParaClasificar(origen, destino) {
+  origen.loadPixels();
+  const ancho = origen.width, alto = origen.height;
+  let minX = ancho, minY = alto, maxX = -1, maxY = -1;
+
+  for (let y = 0; y < alto; y++) {
+    for (let x = 0; x < ancho; x++) {
+      const i = 4 * (y * ancho + x);
+      
+      const r = origen.pixels[i];
+      const g = origen.pixels[i + 1];
+      const b = origen.pixels[i + 2];
+
+      // SOLUCIÓN: Si alguno de los canales no es blanco puro (255), significa que hay color/trazo
+      if (r < 254 || g < 254 || b < 254) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  destino.background(255);
+  if (maxX < 0) return destino.canvas; 
+
+  const anchoDibujo = Math.max(1, maxX - minX);
+  const altoDibujo  = Math.max(1, maxY - minY);
+  const tamDestino  = destino.width;
+  const tamObjetivo = tamDestino * (porcentajeLlenadoActual / 100);
+  const escala = Math.min(tamObjetivo / anchoDibujo, tamObjetivo / altoDibujo);
+
+  const wFinal = anchoDibujo * escala, hFinal = altoDibujo * escala;
+  const offX = (tamDestino - wFinal) / 2;
+  const offY = (tamDestino - hFinal) / 2;
+
+  destino.image(origen, offX, offY, wFinal, hFinal, minX, minY, anchoDibujo, altoDibujo);
+  return destino.canvas;
+}
+
+document.getElementById('sliderMargen').addEventListener('input', e => {
+  porcentajeLlenadoActual = parseInt(e.target.value, 10);
+  document.getElementById('valMargen').textContent = porcentajeLlenadoActual + '%';
+});
+
+/* ==================================================================
+   RED NEURONAL (Canvas Decorativo)
+   ================================================================== */
+const lienzoRed = document.getElementById('lienzoRed');
+const ctxRed = lienzoRed.getContext('2d');
+let capasOcultas    = 2;
+let neuronasPorCapa = 5;
+let progresoPulso   = -1;
+let activacionesNodo = {}; 
+
+function tamañosDeCapas() { return [6, ...Array(capasOcultas).fill(neuronasPorCapa), 5]; }
+function pesoPseudoAleatorio(a, b) {
+  const s = Math.sin(a.x * 0.013 + a.y * 0.021 + b.x * 0.017 + b.y * 0.011) * 43758.5453;
+  return (s - Math.floor(s)) - 0.5;
+}
+
+function regenerarActivaciones() {
+  activacionesNodo = {};
+  const tamaños = tamañosDeCapas();
+  tamaños.forEach((cantidad, li) => {
+    for (let n = 0; n < cantidad; n++) activacionesNodo[`${li}-${n}`] = Math.random();
+  });
+}
+
+function dibujarRed() {
+  const ancho = lienzoRed.width, alto = lienzoRed.height;
+  ctxRed.fillStyle = '#16232B';
+  ctxRed.fillRect(0, 0, ancho, alto);
+
+  const tamaños = tamañosDeCapas();
+  const posiciones = tamaños.map((cantidad, li) => {
+    const x = (li + 1) * (ancho / (tamaños.length + 1));
+    const arr = [];
+    for (let n = 0; n < cantidad; n++) arr.push({ x, y: (n + 1) * (alto / (cantidad + 1)) });
+    return arr;
+  });
+
+  for (let li = 0; li < posiciones.length - 1; li++) {
+    posiciones[li].forEach(a => {
+      posiciones[li + 1].forEach(b => {
+        const peso = pesoPseudoAleatorio(a, b);
+        ctxRed.strokeStyle = `rgba(232,84,46,${0.08 + Math.abs(peso) * 0.5})`;
+        ctxRed.lineWidth = 1;
+        ctxRed.beginPath(); ctxRed.moveTo(a.x, a.y); ctxRed.lineTo(b.x, b.y); ctxRed.stroke();
+      });
+    });
+  }
+
+  if (progresoPulso >= 0 && progresoPulso <= 1) {
+    const posEsc = progresoPulso * (posiciones.length - 1);
+    const li = Math.floor(posEsc);
+    const t = posEsc - li;
+    if (posiciones[li] && posiciones[li + 1]) {
+      posiciones[li].forEach(a => {
+        posiciones[li + 1].forEach(b => {
+          const x = a.x + (b.x - a.x) * t;
+          const y = a.y + (b.y - a.y) * t;
+          ctxRed.fillStyle = '#F2B705';
+          ctxRed.beginPath(); ctxRed.arc(x, y, 2.4, 0, Math.PI * 2); ctxRed.fill();
+        });
+      });
+    }
+  }
+
+  posiciones.forEach((capa, li) => {
+    capa.forEach((n, ni) => {
+      const activacion = activacionesNodo[`${li}-${ni}`] ?? 0.3;
+      const radio = 5 + activacion * 4;
+      ctxRed.beginPath();
+      ctxRed.arc(n.x, n.y, radio, 0, Math.PI * 2);
+      const colorBase = li === 0 ? '15,139,141' : (li === posiciones.length - 1 ? '232,84,46' : '247,243,233');
+      ctxRed.fillStyle = `rgba(${colorBase},${0.4 + activacion * 0.6})`;
+      ctxRed.fill();
+      ctxRed.lineWidth = 1.5; ctxRed.strokeStyle = '#1F2933'; ctxRed.stroke();
+    });
+  });
+}
+
+function dispararPulsoRed() { regenerarActivaciones(); progresoPulso = 0; animarPulso(); }
+function animarPulso() {
+  progresoPulso += 0.025; dibujarRed();
+  if (progresoPulso <= 1.05) requestAnimationFrame(animarPulso); else { progresoPulso = -1; dibujarRed(); }
+}
+
+document.getElementById('sliderCapas').addEventListener('input', e => {
+  capasOcultas = parseInt(e.target.value, 10); document.getElementById('valCapas').textContent = capasOcultas;
+  regenerarActivaciones(); dibujarRed();
+});
+document.getElementById('sliderNeuronas').addEventListener('input', e => {
+  neuronasPorCapa = parseInt(e.target.value, 10); document.getElementById('valNeuronas').textContent = neuronasPorCapa;
+  regenerarActivaciones(); dibujarRed();
+});
+document.getElementById('sliderUmbral').addEventListener('input', e => {
+  document.getElementById('valUmbral').textContent = e.target.value + '%';
+  if (ultimosResultados.length) mostrarTop5(ultimosResultados);
+});
+
+regenerarActivaciones(); dibujarRed();
+
+/* ==================================================================
+   IA - ML5 DOODLENET
+   ================================================================== */
+function mostrarError(mensaje) {
+  const banner = document.getElementById('bannerError');
+  banner.textContent = '⚠️ ' + mensaje;
+  banner.style.display = 'block';
+}
+
+function iniciarClasificador() {
+  try {
+    clasificadorDoodle = ml5.imageClassifier('DoodleNet', () => {
+      modeloListo = true;
+      document.getElementById('estadoModelo').textContent = '✅ DoodleNet listo para adivinar';
+    });
+  } catch (err) {
+    mostrarError('No se pudo cargar DoodleNet. Revisá tu conexión a internet.');
+  }
+}
+window.addEventListener('load', iniciarClasificador);
+
+let clasificando = false;
+
+function ejecutarClasificacion(esModoVivo) {
+  if (!modeloListo || !clasificadorDoodle) {
+    if (!esModoVivo) alert('El modelo todavía está cargando, esperá unos segundos.');
+    return;
+  }
+  if (clasificando) return; 
+  clasificando = true;
+
+  dispararPulsoRed();
+  const imagenProcesada = apiLienzo.getImagenParaIA();
+  document.getElementById('vistaProcesadaCont').style.display = 'flex';
+  document.getElementById('imgVistaProcesada').src = imagenProcesada.toDataURL('image/png');
+
+  clasificadorDoodle.classify(imagenProcesada, 345, (error, resultados) => {
+    clasificando = false;
+    if (error) {
+      mostrarError('Falló la clasificación: ' + (error.message || error));
+      return;
+    }
+
+    const permitidos = resultados.filter(r => CATEGORIAS_SEGURAS.includes(r.label));
+    const sumaConfianza = permitidos.reduce((s, r) => s + r.confidence, 0);
+
+    const advertencia = document.getElementById('advertenciaConfianza');
+    if (sumaConfianza < 0.08) {
+      advertencia.style.display = 'block';
+      advertencia.innerHTML = '🤔 <strong>Confianza muy baja en todas las categorías permitidas.</strong> Es probable que tu dibujo no se parezca a ninguna de ellas (o tenga demasiado detalle/relleno). Probá algo más simple, o corregilo a mano abajo.';
+    } else {
+      advertencia.style.display = 'none';
+    }
+
+    ultimosResultados = permitidos.slice(0, 5).map(r => ({
+      label: r.label,
+      etiquetaEs: traducirEtiqueta(r.label),
+      confidence: sumaConfianza > 0 ? (r.confidence / sumaConfianza) : r.confidence
+    }));
+    mostrarTop5(ultimosResultados);
+    if (ultimosResultados[0]) {
+      document.getElementById('inputCorreccion').placeholder = 'Etiqueta correcta (la IA dijo: ' + ultimosResultados[0].etiquetaEs + ')';
+    }
+  });
+}
+
+document.getElementById('btnListo').addEventListener('click', () => ejecutarClasificacion(false));
+
+let intervaloModoVivo = null;
+document.getElementById('chkModoVivo').addEventListener('change', e => {
+  if (e.target.checked) intervaloModoVivo = setInterval(() => ejecutarClasificacion(true), 1500);
+  else clearInterval(intervaloModoVivo);
+});
+
+function mostrarTop5(resultados) {
+  const umbral = parseInt(document.getElementById('sliderUmbral').value, 10);
+  const contenedor = document.getElementById('contenedorTop5');
+  contenedor.innerHTML = '';
+  resultados.forEach((r, i) => {
+    const porcentaje = Math.round(r.confidence * 100);
+    const bajoUmbral = porcentaje < umbral;
+    const fila = document.createElement('div');
+    fila.className = 'barra-resultado';
+    fila.style.opacity = bajoUmbral ? 0.4 : 1;
+    fila.innerHTML = `
+      <div class="cabecera">
+        <span>${i + 1}. ${r.etiquetaEs}</span>
+        <span class="mono">${porcentaje}%${bajoUmbral ? ' (bajo umbral)' : ''}</span>
+      </div>
+      <div class="track">
+        <div class="relleno" style="width:${porcentaje}%"></div>
+        <div class="marca-umbral" style="left:${umbral}%"></div>
+      </div>
+    `;
+    contenedor.appendChild(fila);
+  });
+}
+
+/* ==================================================================
+   GALERÍA
+   ================================================================== */
+document.getElementById('btnGuardar').addEventListener('click', () => {
+  if (!ultimosResultados.length) return alert('Primero presioná "¡LISTO!" para que la IA intente adivinar tu dibujo.');
+  
+  const correccion = document.getElementById('inputCorreccion').value.trim();
+  const etiquetaFinal = correccion || ultimosResultados[0].etiquetaEs;
+  const rasgos = leerRasgosMarcados();
+
+  galeria.push({
+    id: contadorId++,
+    dataURL: apiLienzo.getDataURL(),
+    etiqueta: etiquetaFinal,
+    corregidaPorHumano: Boolean(correccion),
+    confianza: Math.round(ultimosResultados[0].confidence * 100),
+    rasgos: rasgos
+  });
+
+  document.getElementById('inputCorreccion').value = '';
+  renderizarGrillaRasgos();
+  renderizarGaleria();
+  alert('¡Guardado en la galería! (' + galeria.length + ' dibujo/s hasta ahora)');
+});
+
+function renderizarGaleria() {
+  const contenedor = document.getElementById('rejillaGaleria');
+  if (!galeria.length) {
+    contenedor.innerHTML = '<p class="vacio">Todavía no guardaste ningún dibujo. Andá a la pestaña "Dibujar" y guardá al menos 3.</p>';
+    return;
+  }
+  contenedor.innerHTML = '';
+  galeria.forEach(item => {
+    const carta = document.createElement('div');
+    carta.className = 'carta-dibujo';
+    carta.innerHTML = `
+      <img src="${item.dataURL}" alt="${item.etiqueta}">
+      <div class="info">
+        <div class="etiqueta">${item.etiqueta} ${item.corregidaPorHumano ? '✏️' : ''}</div>
+        <div class="conf mono">IA: ${item.confianza}% de confianza</div>
+        <div class="tags">${item.rasgos.length ? '🏷️ ' + item.rasgos.join(', ') : 'Sin rasgos cargados'}</div>
+        <div class="acciones">
+          <button data-accion="etiqueta" data-id="${item.id}">Corregir etiqueta</button>
+          <button data-accion="rasgos" data-id="${item.id}">Editar rasgos</button>
+          <button data-accion="borrar" data-id="${item.id}">Eliminar</button>
+        </div>
+      </div>
+    `;
+    contenedor.appendChild(carta);
+  });
+
+  // Escuchador dinámico y robusto para reparar la edición y persistencia de datos
+  contenedor.querySelectorAll('button[data-accion]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = parseInt(btn.dataset.id, 10);
+      const item = galeria.find(g => g.id === id);
+      
+      if (btn.dataset.accion === 'etiqueta') {
+        const nueva = prompt('Etiqueta correcta para este dibujo:', item.etiqueta);
+        if (nueva !== null && nueva.trim() !== "") { 
+          item.etiqueta = nueva.trim(); 
+          item.corregidaPorHumano = true; 
+        }
+      } else if (btn.dataset.accion === 'rasgos') {
+        // Permite editar los rasgos de forma prolija mediante texto separado por comas
+        const nuevosRasgos = prompt(
+          `Editar rasgos para "${item.etiqueta}" (separados por coma):\n\nOpciones válidas sugeridas:\n${RASGOS_FIJOS.join(', ')}`, 
+          item.rasgos.join(', ')
+        );
+        if (nuevosRasgos !== null) {
+          // Limpia espacios vacíos y filtra textos huérfanos
+          item.rasgos = nuevosRasgos.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+        }
+      } else if (btn.dataset.accion === 'borrar') {
+        if (confirm('¿Eliminar este dibujo de la galería?')) {
+          galeria = galeria.filter(g => g.id !== id);
+        }
+      }
+      
+      // Sincroniza los cambios refrescando la visualización en ambas pestañas
+      renderizarGaleria();
+      if (typeof renderizarGaleriaAki === 'function' && candidatosRestantes.length > 0) {
+        renderizarGaleriaAki();
+      }
+    });
+  });
+}
+
+/* ==================================================================
+   AKINATOR
+   ================================================================== */
+document.getElementById('btnComenzarAki').addEventListener('click', iniciarAkinator);
+document.getElementById('btnReiniciarAki').addEventListener('click', iniciarAkinator);
+document.getElementById('btnSi').addEventListener('click', () => responderAkinator(true));
+document.getElementById('btnNo').addEventListener('click', () => responderAkinator(false));
+
+function iniciarAkinator() {
+  if (galeria.length < 3) return alert('Necesitás al menos 3 dibujos guardados en la Galería para jugar al Akinator.');
+  candidatosRestantes = galeria.map(g => g.id);
+  etiquetasUsadas = new Set();
+  document.getElementById('cajaPregunta').style.display = 'block';
+  document.getElementById('cajaRespuestas').style.display = 'flex';
+  renderizarGaleriaAki();
+  siguientePreguntaAkinator();
+}
+
+function rasgosDe(item) { return item.rasgos.length ? item.rasgos : [item.etiqueta]; }
+
+function contarRasgosEntreCandidatos() {
+  const conteo = {};
+  candidatosRestantes.forEach(id => {
+    const item = galeria.find(g => g.id === id);
+    rasgosDe(item).forEach(r => {
+      if (!etiquetasUsadas.has(r)) conteo[r] = (conteo[r] || 0) + 1;
+    });
+  });
+  return conteo;
+}
+
+function siguientePreguntaAkinator() {
+  if (candidatosRestantes.length <= 1) return finalizarAkinator();
+
+  const conteo = contarRasgosEntreCandidatos();
+  const rasgos = Object.keys(conteo);
+
+  if (!rasgos.length) {
+    document.getElementById('textoPregunta').textContent = 'No tengo más pistas para diferenciarlos. ¡Elegí manualmente cuál te parece que es!';
+    document.getElementById('cajaRespuestas').style.display = 'none';
+    return;
+  }
+
+  let mejorDiferencia = Infinity;
+  rasgos.forEach(r => {
+    const diferencia = Math.abs(conteo[r] - candidatosRestantes.length / 2);
+    if (diferencia < mejorDiferencia) mejorDiferencia = diferencia;
+  });
+  const empatados = rasgos.filter(r => Math.abs(conteo[r] - candidatosRestantes.length / 2) === mejorDiferencia);
+  preguntaActual = empatados[Math.floor(Math.random() * empatados.length)];
+
+  document.getElementById('textoPregunta').textContent = `¿Tu dibujo tiene el rasgo: "${preguntaActual}"?`;
+  document.getElementById('cajaRespuestas').style.display = 'flex';
+}
+
+function responderAkinator(esSi) {
+  etiquetasUsadas.add(preguntaActual);
+  candidatosRestantes = candidatosRestantes.filter(id => {
+    const item = galeria.find(g => g.id === id);
+    const tieneRasgo = rasgosDe(item).includes(preguntaActual);
+    return esSi ? tieneRasgo : !tieneRasgo;
+  });
+
+  if (!candidatosRestantes.length) {
+    document.getElementById('textoPregunta').textContent = 'Mmm, ninguno de mis dibujos coincide con esas respuestas. ¡Reiniciá la ronda!';
+    document.getElementById('cajaRespuestas').style.display = 'none';
+    renderizarGaleriaAki();
+    return;
+  }
+  renderizarGaleriaAki();
+  siguientePreguntaAkinator();
+}
+
+function finalizarAkinator() {
+  const item = galeria.find(g => g.id === candidatosRestantes[0]);
+  document.getElementById('textoPregunta').textContent = `🎉 ¡Ya sé cuál es! ¿Es tu dibujo de "${item.etiqueta}"?`;
+  document.getElementById('cajaRespuestas').style.display = 'none';
+  renderizarGaleriaAki();
+}
+
+function renderizarGaleriaAki() {
+  const contenedor = document.getElementById('rejillaAki');
+  contenedor.innerHTML = '';
+  galeria.forEach(item => {
+    const activo = candidatosRestantes.includes(item.id);
+    const carta = document.createElement('div');
+    carta.className = 'aki-carta' + (activo ? '' : ' descartada');
+    carta.innerHTML = `<img src="${item.dataURL}"><span>${item.etiqueta}</span>`;
+    contenedor.appendChild(carta);
+  });
+}
+
+/* ==================================================================
+   CÓDIGO QR
+   ================================================================== */
+document.getElementById('inputURLQR').value = window.location.protocol === 'file:' ? '' : window.location.href;
+
+document.getElementById('btnGenerarQR').addEventListener('click', () => {
+  const url = document.getElementById('inputURLQR').value.trim();
+  if (!url) return alert('Pegá primero la URL pública donde se aloje este archivo.');
+  const contenedor = document.getElementById('contenedorQR');
+  contenedor.innerHTML = '';
+  new QRCode(contenedor, { text: url, width: 220, height: 220, colorDark: '#1F2933', colorLight: '#FFFFFF' });
+});
+
+renderizarGaleria();
+</script>
+
+</body>
+</html>
