@@ -80,7 +80,23 @@
   .layout-dibujo{ display:grid; grid-template-columns: 92px 1fr 340px; gap: 16px; align-items:start; }
   @media (max-width: 900px){
     .layout-dibujo{ grid-template-columns: 1fr; }
-    .barra-herramientas{ flex-direction:row !important; overflow-x:auto; }
+    .barra-herramientas{ 
+      flex-direction: row !important; 
+      overflow-x: auto; 
+      align-items: center; 
+      padding: 10px; 
+      -ms-overflow-style: none; 
+      scrollbar-width: none;
+    }
+    .barra-herramientas::-webkit-scrollbar { display: none; }
+    
+    .btn-tool { width: 48px; height: 48px; flex: 0 0 auto; aspect-ratio: unset; }
+    #colorPicker { width: 48px !important; height: 48px !important; margin-top: 0 !important; flex: 0 0 auto; }
+    .paleta { 
+      flex-wrap: nowrap; margin-top: 0; padding-left: 12px; margin-left: 6px; 
+      border-left: 2px solid var(--grilla); align-items: center; 
+    }
+    .swatch { flex: 0 0 auto; }
   }
 
   .barra-herramientas{ display:flex; flex-direction:column; gap:10px; padding:10px 8px; }
@@ -663,7 +679,24 @@ new p5(p => {
     }
   };
 
-  p.touchMoved = () => { if (dentroDelLienzo()) return false; };
+  /* Eventos táctiles nativos para que el celu dibuje de forma fluida */
+  p.touchStarted = () => {
+    if (dentroDelLienzo()) {
+      p.mousePressed();
+      return false; // Evita que la pantalla rebote al apoyar el dedo
+    }
+  };
+
+  p.touchMoved = () => {
+    if (dentroDelLienzo()) {
+      p.mouseDragged();
+      return false; // Bloquea el scroll de la página únicamente mientras arrastrás el trazo
+    }
+  };
+
+  p.touchEnded = () => {
+    p.mouseReleased();
+  };
 
   apiLienzo.limpiar = () => {
     guardarEstadoHistorial();
@@ -713,7 +746,7 @@ document.getElementById('btnLimpiar').addEventListener('click', () => apiLienzo.
 document.getElementById('btnDeshacer').addEventListener('click', () => apiLienzo.deshacer());
 document.getElementById('btnRehacer').addEventListener('click', () => apiLienzo.rehacer());
 
-// Soporte robusto de teclado para Deshacer/Rehacer
+// Soporte de teclado para Deshacer/Rehacer
 window.addEventListener('keydown', e => {
   if (!e.ctrlKey && !e.metaKey) return;
   if (e.key.toLowerCase() === 'z') { e.preventDefault(); apiLienzo.deshacer(); }
