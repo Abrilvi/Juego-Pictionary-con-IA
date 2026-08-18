@@ -78,25 +78,46 @@
 
   /* ---------- Layout pestaña Dibujar ---------- */
   .layout-dibujo{ display:grid; grid-template-columns: 92px 1fr 340px; gap: 16px; align-items:start; }
-  @media (max-width: 900px){
-    .layout-dibujo{ grid-template-columns: 1fr; }
-    .barra-herramientas{ 
-      flex-direction: row !important; 
-      overflow-x: auto; 
-      align-items: center; 
-      padding: 10px; 
-      -ms-overflow-style: none; 
-      scrollbar-width: none;
-    }
-    .barra-herramientas::-webkit-scrollbar { display: none; }
+  @media (max-width: 900px) {
+    .layout-dibujo { grid-template-columns: 1fr; }
     
-    .btn-tool { width: 48px; height: 48px; flex: 0 0 auto; aspect-ratio: unset; }
-    #colorPicker { width: 48px !important; height: 48px !important; margin-top: 0 !important; flex: 0 0 auto; }
-    .paleta { 
-      flex-wrap: nowrap; margin-top: 0; padding-left: 12px; margin-left: 6px; 
-      border-left: 2px solid var(--grilla); align-items: center; 
+    .barra-herramientas { 
+      flex-direction: row !important; 
+      flex-wrap: wrap !important; /* Permite que los elementos bajen de línea */
+      justify-content: center; 
+      gap: 10px;
+      padding: 16px 12px; 
     }
-    .swatch { flex: 0 0 auto; }
+    
+    .btn-tool { 
+      width: 48px; 
+      height: 48px; 
+      flex: 0 0 auto; 
+      aspect-ratio: unset; 
+    }
+    
+    .paleta { 
+      width: 100%; /* Fuerza a que los colores bajen a una nueva fila */
+      justify-content: center; 
+      gap: 8px; 
+      margin-top: 4px; 
+      padding-top: 16px; 
+      border-top: 2px dashed var(--grilla); /* Separador visual */
+      border-left: none; 
+      margin-left: 0; 
+      padding-left: 0;
+    }
+    
+    .swatch { 
+      width: 32px; 
+      height: 32px; 
+      flex: 0 0 auto; 
+    }
+    
+    #colorPicker { 
+      height: 44px !important; /* Más alto para que sea fácil tocarlo en el celu */
+      margin-top: 6px !important; 
+    }
   }
 
   .barra-herramientas{ display:flex; flex-direction:column; gap:10px; padding:10px 8px; }
