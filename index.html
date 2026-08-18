@@ -78,47 +78,74 @@
 
   /* ---------- Layout pestaña Dibujar ---------- */
   .layout-dibujo{ display:grid; grid-template-columns: 92px 1fr 340px; gap: 16px; align-items:start; }
-  /* FIX CELULAR: Barra de herramientas deslizable tipo carrusel */
-  @media (max-width: 900px){
-    .layout-dibujo{ grid-template-columns: 1fr; }
+  /* ==========================================================
+     FIX PARA CELULARES:
+     Botonera enmarcada, compacta y con botones simétricos
+     ========================================================== */
+  @media (max-width: 900px) {
+    .layout-dibujo { 
+      grid-template-columns: 1fr; 
+      gap: 12px;
+    }
     
+    /* Enmarcamos la barra para que no ocupe toda la pantalla, sino que flote centrada */
     .barra-herramientas { 
       flex-direction: row !important; 
       flex-wrap: nowrap !important;
       overflow-x: auto; 
       align-items: center; 
       justify-content: flex-start;
-      padding: 12px;
-      gap: 12px;
-      /* Oculta la barra de scroll pero permite deslizar suave */
+      
+      /* Ajustes de tamaño para que parezca una barra real */
+      width: 100%;
+      max-width: 420px; /* Evita que se estire al infinito */
+      margin: 0 auto; /* La centra en la pantalla */
+      padding: 8px 12px; 
+      gap: 8px;
+      
+      /* Ocultamos barras de scroll raras del sistema */
       -ms-overflow-style: none; 
       scrollbar-width: none;
-      scroll-snap-type: x mandatory; 
     }
     .barra-herramientas::-webkit-scrollbar { display: none; }
     
+    /* Forzamos a que los botones sean SIEMPRE cuadrados perfectos y de tamaño humano */
     .btn-tool { 
-      width: 46px; height: 46px; flex: 0 0 auto; 
-      aspect-ratio: unset; border-radius: 12px;
-      scroll-snap-align: start;
+      width: 42px !important; 
+      height: 42px !important; 
+      flex: 0 0 42px !important; /* Impide que el navegador los estire a lo ancho */
+      font-size: 18px;
+      border-radius: 8px;
     }
     
+    /* El selector de color ahora se integra como un botón cuadrado más */
+    #colorPicker { 
+      width: 42px !important; 
+      height: 42px !important; 
+      flex: 0 0 42px !important;
+      margin-top: 0 !important; 
+      padding: 0;
+      cursor: pointer;
+      border-radius: 8px !important;
+    }
+    
+    /* La paleta de colores rápidos continúa en la misma línea de forma fluida */
     .paleta { 
-      flex-wrap: nowrap; margin-top: 0; padding-top: 0; 
-      padding-left: 12px; margin-left: 0; 
-      border-top: none; border-left: 2px dashed var(--grilla); 
-      align-items: center; gap: 12px;
+      flex-wrap: nowrap !important; 
+      margin-top: 0; 
+      padding-top: 0;
+      padding-left: 8px; 
+      margin-left: 4px; 
+      border-top: none; 
+      border-left: 2px dashed var(--grilla); /* Separador sutil */
+      align-items: center; 
+      gap: 8px;
     }
     
     .swatch { 
-      width: 34px; height: 34px; flex: 0 0 auto; 
-      scroll-snap-align: start; 
-    }
-    
-    #colorPicker { 
-      width: 36px !important; height: 36px !important; 
-      margin-top: 0 !important; flex: 0 0 auto; padding: 0;
-      border-radius: 8px !important; overflow: hidden;
+      width: 26px !important; 
+      height: 26px !important; 
+      flex: 0 0 26px !important; 
     }
   }
   
