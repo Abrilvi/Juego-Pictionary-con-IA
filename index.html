@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pictionary vs IA · Taller de Visión por Computadora</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -78,48 +78,50 @@
 
   /* ---------- Layout pestaña Dibujar ---------- */
   .layout-dibujo{ display:grid; grid-template-columns: 92px 1fr 340px; gap: 16px; align-items:start; }
-  @media (max-width: 900px) {
-    .layout-dibujo { grid-template-columns: 1fr; }
+  /* FIX CELULAR: Barra de herramientas deslizable tipo carrusel */
+  @media (max-width: 900px){
+    .layout-dibujo{ grid-template-columns: 1fr; }
     
     .barra-herramientas { 
       flex-direction: row !important; 
-      flex-wrap: wrap !important; /* Permite que los elementos bajen de línea */
-      justify-content: center; 
-      gap: 10px;
-      padding: 16px 12px; 
+      flex-wrap: nowrap !important;
+      overflow-x: auto; 
+      align-items: center; 
+      justify-content: flex-start;
+      padding: 12px;
+      gap: 12px;
+      /* Oculta la barra de scroll pero permite deslizar suave */
+      -ms-overflow-style: none; 
+      scrollbar-width: none;
+      scroll-snap-type: x mandatory; 
     }
+    .barra-herramientas::-webkit-scrollbar { display: none; }
     
     .btn-tool { 
-      width: 48px; 
-      height: 48px; 
-      flex: 0 0 auto; 
-      aspect-ratio: unset; 
+      width: 46px; height: 46px; flex: 0 0 auto; 
+      aspect-ratio: unset; border-radius: 12px;
+      scroll-snap-align: start;
     }
     
     .paleta { 
-      width: 100%; /* Fuerza a que los colores bajen a una nueva fila */
-      justify-content: center; 
-      gap: 8px; 
-      margin-top: 4px; 
-      padding-top: 16px; 
-      border-top: 2px dashed var(--grilla); /* Separador visual */
-      border-left: none; 
-      margin-left: 0; 
-      padding-left: 0;
+      flex-wrap: nowrap; margin-top: 0; padding-top: 0; 
+      padding-left: 12px; margin-left: 0; 
+      border-top: none; border-left: 2px dashed var(--grilla); 
+      align-items: center; gap: 12px;
     }
     
     .swatch { 
-      width: 32px; 
-      height: 32px; 
-      flex: 0 0 auto; 
+      width: 34px; height: 34px; flex: 0 0 auto; 
+      scroll-snap-align: start; 
     }
     
     #colorPicker { 
-      height: 44px !important; /* Más alto para que sea fácil tocarlo en el celu */
-      margin-top: 6px !important; 
+      width: 36px !important; height: 36px !important; 
+      margin-top: 0 !important; flex: 0 0 auto; padding: 0;
+      border-radius: 8px !important; overflow: hidden;
     }
   }
-
+  
   .barra-herramientas{ display:flex; flex-direction:column; gap:10px; padding:10px 8px; }
   .btn-tool{
     width:100%; aspect-ratio:1; border:2px solid var(--grafito); border-radius:10px;
@@ -700,25 +702,28 @@ new p5(p => {
     }
   };
 
-  /* Eventos táctiles nativos para que el celu dibuje de forma fluida */
-  p.touchStarted = () => {
-    if (dentroDelLienzo()) {
+  /* Eventos táctiles aislados estrictamente al canvas */
+  p.touchStarted = (event) => {
+    if (event.target === p.canvas) {
       p.mousePressed();
-      return false; // Evita que la pantalla rebote al apoyar el dedo
+      return false; // Bloquea la pantalla solo si tocás el lienzo
     }
   };
 
-  p.touchMoved = () => {
-    if (dentroDelLienzo()) {
+  p.touchMoved = (event) => {
+    if (event.target === p.canvas) {
       p.mouseDragged();
-      return false; // Bloquea el scroll de la página únicamente mientras arrastrás el trazo
+      return false;
     }
   };
 
-  p.touchEnded = () => {
-    p.mouseReleased();
+  p.touchEnded = (event) => {
+    if (event.target === p.canvas) {
+      p.mouseReleased();
+      return false;
+    }
   };
-
+  
   apiLienzo.limpiar = () => {
     guardarEstadoHistorial();
     bufferPrincipal.background(255);
